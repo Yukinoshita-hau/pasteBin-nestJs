@@ -9,6 +9,7 @@ import {
 	UseGuards,
 	UsePipes,
 	ValidationPipe,
+	Headers,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TextService } from './text.service';
@@ -49,6 +50,27 @@ export class TextController {
 	@Get(':id')
 	async getText(@Param('id') id: string, @Res() res: Response): Promise<void> {
 		const text = await this.textService.findByIdText({ id: id });
-		res.json({ text: text.text, id: text._id });
+		res.json({ text: text.text, id: text._id, user: text.user });
+	}
+
+	@UseGuards(JwtAuthGuard)
+	@Get('delete/:id')
+	async deleteText(
+		@Param('id') id: string,
+		@Headers('Authorization') token: string,
+	): Promise<void> {
+		const result = await this.textService.deleteText(token, { id: id });
+		console.log(result.id, result.text);
+	}
+
+	@UseGuards(JwtAuthGuard)
+	@Post('update/:id')
+	async updateText(
+		@Param('id') id: string,
+		@Headers('Authorization') token: string,
+		@Body() newTExt: { text: string },
+	) {
+		const result = await this.textService.updateText(token, { id: id }, newTExt);
+		return result;
 	}
 }

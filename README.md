@@ -58,6 +58,22 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## .env
+
+```bash
+# to interface with the database
+$ MONGO_LOGIN
+$ MONGO_PASSWORD
+$ MONGO_DATABASE
+$ MONGO_LIBRARY
+
+# for caching
+$ SALT
+
+# to create a jwt token.
+$ SECRET
+```
+
 ## Support
 
 Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
