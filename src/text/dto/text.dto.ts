@@ -1,10 +1,15 @@
-import { IsString } from 'class-validator';
-import { UserSchema } from 'src/user/models/user.model';
+import { IsNumber, IsString } from 'class-validator';
 
 export class TextDto {
 	@IsString({ message: 'incorrect text' })
 	text: string;
 
-	@IsString({ message: 'incorrect user' })
-	user: UserSchema;
+	user: string;
+	expire_at: Date;
+
+	@IsNumber({}, { message: 'ttl are a number' })
+	ttl: number;
+
+	likes: number;
+	dislikes: number;
 }

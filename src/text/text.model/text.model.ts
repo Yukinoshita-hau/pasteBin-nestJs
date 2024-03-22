@@ -1,19 +1,30 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Schema as MSchema } from 'mongoose';
+import { HydratedDocument, Schema as MSchema, ObjectId } from 'mongoose';
 import { UserSchema } from 'src/user/models/user.model';
 
 export type TextDocument = HydratedDocument<TextSchema>;
 
-@Schema()
+@Schema({ timestamps: true })
 export class TextSchema {
-	@Prop()
-	id: string;
-
-	@Prop({ required: true })
-	text: string;
+	_id: ObjectId | string;
 
 	@Prop({ type: MSchema.Types.ObjectId, ref: UserSchema.name })
-	user: UserSchema;
+	user: UserSchema | string;
+
+	text?: string;
+
+	@Prop()
+	expire_at: Date;
+
+	@Prop({ required: true })
+	ttl: number;
+
+	@Prop({ required: true })
+	likes: number;
+
+	@Prop({ required: true })
+	dislikes: number;
 }
 
 export const textSchema = SchemaFactory.createForClass(TextSchema);
+textSchema.index({ expire_at: 1 }, { expireAfterSeconds: 0 });
