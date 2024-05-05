@@ -6,18 +6,22 @@ import {
 	PutObjectCommand,
 	S3Client,
 } from '@aws-sdk/client-s3';
-import { YandexCloudstoreSetting } from './interfaces/cloudstores.dto';
 import { IYandexCloudstore } from './interfaces/cloudstore.inteface';
+import { Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 export class yandexCloudstore implements IYandexCloudstore {
 	private client: S3Client;
 
-	constructor(setting?: YandexCloudstoreSetting) {
-		if (setting) {
-			this.client = new S3Client(setting);
-		} else {
-			this.client = new S3Client();
-		}
+	constructor(@Inject(ConfigService) private readonly configService: ConfigService) {
+		this.client = new S3Client({
+			region: configService.get('REGION'),
+			credentials: {
+				accessKeyId: configService.get('ACCESSKEYID'),
+				secretAccessKey: configService.get('SECRETACCESSKEY'),
+			},
+			endpoint: configService.get('ENDPOINT'),
+		});
 	}
 
 	setsetting(setting: object) {

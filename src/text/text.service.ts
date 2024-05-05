@@ -12,161 +12,235 @@ import { IYandexCloudstore } from 'src/configs/interfaces/cloudstore.inteface';
 
 @Injectable()
 export class TextService {
-	private cloudstore: IYandexCloudstore = new yandexCloudstore();
+	private cloudstore: IYandexCloudstore = new yandexCloudstore(this.configService);
 	constructor(
 		@InjectModel('text') private textModel: Model<TextDocument>,
 		@InjectModel('user') private userModel: Model<TextDocument>,
 		private configService: ConfigService,
-	) {
-		this.cloudstore.setsetting({
-			region: configService.get('REGION'),
-			credentials: {
-				accessKeyId: configService.get('ACCESSKEYID'),
-				secretAccessKey: configService.get('SECRETACCESSKEY'),
-			},
-			endpoint: configService.get('ENDPOINT'),
-		});
-	}
+	) {}
 
 	async createText(authHeader: string, text: TextDto): Promise<TextDocument> {
-		const userId = await this.getIdJwt(authHeader);
-		text.user = userId;
-		if (text.ttl) {
-			text.expire_at = new Date(Date.now() + text.ttl * 1000);
+		try {
+			const userId = await this.getIdJwt(authHeader);
+			text.user = userId;
+			if (text.ttl) {
+				text.expire_at = new Date(Date.now() + text.ttl * 1000);
+			}
+			text.likes = 0;
+			text.dislikes = 0;
+			if (text.customId) {
+				if (text.customId.length < 4 || text.customId.length > 25) {
+					throw new HttpException(
+						`The customid must be greater than 4 but less than 14 characters`,
+						400,
+					);
+				}
+			}
+			const newText = new this.textModel(text);
+			await this.cloudstore.addItemIntoBucket('texts', `${String(newText._id)}.txt`, text.text);
+			newText.save();
+			return newText;
+		} catch (err) {
+			if (
+				err instanceof Error &&
+				err.message === 'The customid must be greater than 4 but less than 25 characters'
+			) {
+				throw new HttpException(
+					`The customid must be greater than 4 but less than 25 characters`,
+					400,
+				);
+			} else {
+				if (err instanceof Error) {
+					throw new HttpException(`${err.message}`, 503);
+				}
+			}
 		}
-		text.likes = 0;
-		text.dislikes = 0;
-		const newText = new this.textModel(text);
-		await this.cloudstore.addItemIntoBucket('texts', `${String(newText._id)}.txt`, text.text);
-		newText.save();
-		return newText;
 	}
 
 	async findCachedByIdText(id: string): Promise<TextDocument | null> {
-		const redis = await redisConfig();
-		const text = await redis.get(id);
-		if (text) {
-			console.log(text);
-			return JSON.parse(text) as TextDocument;
-		} else {
-			const result = await this.findByIdText(id);
-			if (result) {
-				const userStr = String(result.user);
-				result.user = userStr;
-				console.log(result);
-				await redis.setEx(id, 20, JSON.stringify(result));
-				return result;
+		try {
+			const redis = await redisConfig();
+			const text = await redis.get(id);
+			if (text) {
+				return JSON.parse(text) as TextDocument;
+			} else {
+				const result = await this.findByIdText(id);
+				if (result) {
+					const userStr = String(result.user);
+					result.user = userStr;
+					await redis.setEx(id, 20, JSON.stringify(result));
+					return result;
+				}
+				return null;
 			}
-			return null;
+		} catch (err) {
+			throw new HttpException(`this text was not found`, 404);
+		}
+	}
+
+	async updateCustomId(id: string, newCustomId: string) {
+		try {
+			if (newCustomId.length < 4 || newCustomId.length > 25) {
+				throw new HttpException(
+					`The customid must be greater than 4 but less than 25 characters`,
+					400,
+				);
+			} else {
+				const text = await this.findByIdText(id);
+				text.customId = newCustomId;
+				return await this.textModel.findByIdAndUpdate(text.id, text);
+			}
+		} catch (err) {
+			if (
+				err instanceof Error &&
+				err.message === 'The customid must be greater than 4 but less than 25 characters'
+			) {
+				throw new HttpException(
+					`The customid must be greater than 4 but less than 25 characters`,
+					400,
+				);
+			} else {
+				if (err instanceof Error) {
+					console.log(err.message);
+					throw new HttpException(`this text was not found`, 404);
+				}
+			}
 		}
 	}
 
 	async findByIdText(id: string): Promise<TextDocument | null> {
-		const result = await this.textModel.findById(id);
-		const text = await this.cloudstore.readBucketItem('texts', `${result._id}.txt`);
-		result.text = text;
-
-		if (!result) {
-			throw new HttpException('the text was not finded', 404);
-		} else {
+		try {
+			let result;
+			if (await this.textModel.findOne({ customId: id })) {
+				result = await this.textModel.findOne({ customId: id });
+			} else {
+				result = await this.textModel.findById(id);
+			}
+			const text = await this.cloudstore.readBucketItem('texts', `${result._id}.txt`);
+			result.text = text;
 			return result;
+		} catch (err) {
+			throw new HttpException(`this text was not found`, 404);
 		}
 	}
 
 	async deleteText(token: string, id: string) {
-		const jwtToken = token.split(' ')[1];
-		let user: AuthInterface;
-		verify(jwtToken, this.configService.get('SECRET'), async (err, decoded) => {
-			if (typeof decoded !== 'string' && typeof decoded !== 'undefined') {
-				user = decoded;
+		try {
+			const jwtToken = token.split(' ')[1];
+			let user: AuthInterface;
+			verify(jwtToken, this.configService.get('SECRET'), async (err, decoded) => {
+				if (typeof decoded !== 'string' && typeof decoded !== 'undefined') {
+					user = decoded;
+				}
+			});
+
+			const text = await this.textModel.findById(id);
+
+			const result = await this.userModel.findOne({ email: user.email });
+
+			if (String(result._id) === String(text.user)) {
+				return await this.textModel.findByIdAndDelete(id);
+			} else {
+				throw new HttpException('this text does not belong to you.', 400);
 			}
-		});
-
-		const text = await this.textModel.findById(id);
-		if (!text) {
-			throw new HttpException('id text not found', 404);
-		}
-
-		const result = await this.userModel.findOne({ email: user.email });
-
-		if (String(result._id) === String(text.user)) {
-			return await this.textModel.findByIdAndDelete(id);
-		} else {
-			throw new HttpException('this text does not belong to you.', 400);
+		} catch (err) {
+			throw new HttpException('invalid id', 400);
 		}
 	}
 
 	async updateText(token: string, id: string, newText: { text: string }) {
-		const jwtToken = token.split(' ')[1];
-		let user: AuthInterface;
-		verify(jwtToken, this.configService.get('SECRET'), async (err, decoded) => {
-			if (typeof decoded !== 'string' && typeof decoded !== 'undefined') {
-				user = decoded;
+		try {
+			const jwtToken = token.split(' ')[1];
+			let user: AuthInterface;
+			verify(jwtToken, this.configService.get('SECRET'), async (err, decoded) => {
+				if (typeof decoded !== 'string' && typeof decoded !== 'undefined') {
+					user = decoded;
+				}
+			});
+
+			const result = await this.userModel.findOne({ email: user.email });
+
+			const text = await this.textModel.findById(id);
+			if (!text) {
+				throw new HttpException('id text not found', 404);
 			}
-		});
 
-		const result = await this.userModel.findOne({ email: user.email });
-
-		const text = await this.textModel.findById(id);
-		if (!text) {
-			throw new HttpException('id text not found', 404);
-		}
-
-		if (String(result._id) === String(text.user)) {
-			console.log(newText, id);
-			return await this.textModel.findByIdAndUpdate(id, newText);
-		} else {
-			throw new HttpException('this text does not belong to you.', 400);
+			if (String(result._id) === String(text.user)) {
+				return await this.textModel.findByIdAndUpdate(id, newText);
+			} else {
+				throw new HttpException('this text does not belong to you.', 400);
+			}
+		} catch (err) {
+			throw new HttpException('invalid id', 400);
 		}
 	}
 
 	async addLike(id: string): Promise<{ likes: number }> {
-		await this.textModel.updateOne({ _id: id }, { $inc: { likes: 1 } });
-		const text = await this.findByIdText(id);
-		if (!text) {
-			throw new HttpException('the text was not finded', 404);
+		try {
+			await this.textModel.updateOne({ _id: id }, { $inc: { likes: 1 } });
+			const text = await this.findByIdText(id);
+			if (!text) {
+				throw new HttpException('the text was not finded', 404);
+			}
+			return { likes: text.likes };
+		} catch (err) {
+			throw new HttpException('invalid id', 400);
 		}
-		return { likes: text.likes };
 	}
 
 	async subtractLike(id: string): Promise<{ likes: number }> {
-		await this.textModel.updateOne({ _id: id }, { $inc: { likes: -1 } });
-		const text = await this.findByIdText(id);
-		if (!text) {
-			throw new HttpException('the text was not finded', 404);
+		try {
+			await this.textModel.updateOne({ _id: id }, { $inc: { likes: -1 } });
+			const text = await this.findByIdText(id);
+			if (!text) {
+				throw new HttpException('the text was not finded', 404);
+			}
+			return { likes: text.likes };
+		} catch (err) {
+			throw new HttpException('invalid id', 400);
 		}
-		return { likes: text.likes };
 	}
 
 	async addDislike(id: string): Promise<{ dislikes: number }> {
-		await this.textModel.updateOne({ _id: id }, { $inc: { dislikes: 1 } });
-		const text = await this.findByIdText(id);
-		if (!text) {
-			throw new HttpException('the text was not finded', 404);
+		try {
+			await this.textModel.updateOne({ _id: id }, { $inc: { dislikes: 1 } });
+			const text = await this.findByIdText(id);
+			if (!text) {
+				throw new HttpException('the text was not finded', 404);
+			}
+			return { dislikes: text.dislikes };
+		} catch (err) {
+			throw new HttpException('invalid id', 400);
 		}
-		return { dislikes: text.dislikes };
 	}
 
 	async subtractDislike(id: string): Promise<{ dislikes: number }> {
-		await this.textModel.updateOne({ _id: id }, { $inc: { dislikes: -1 } });
-		const text = await this.findByIdText(id);
-		console.log(text);
-		if (!text) {
-			throw new HttpException('the text was not finded', 404);
+		try {
+			await this.textModel.updateOne({ _id: id }, { $inc: { dislikes: -1 } });
+			const text = await this.findByIdText(id);
+			if (!text) {
+				throw new HttpException('the text was not finded', 404);
+			}
+			return { dislikes: text.dislikes };
+		} catch (err) {
+			throw new HttpException('invalid id', 400);
 		}
-		return { dislikes: text.dislikes };
 	}
 
 	async getIdJwt(token: string): Promise<string> {
-		const jwtToken = token.split(' ')[1];
-		let userEmail: AuthInterface;
-		verify(jwtToken, this.configService.get('SECRET'), async (err, decoded) => {
-			if (typeof decoded !== 'string' && typeof decoded !== 'undefined') {
-				userEmail = decoded;
-			}
-		});
+		try {
+			const jwtToken = token.split(' ')[1];
+			let userEmail: AuthInterface;
+			verify(jwtToken, this.configService.get('SECRET'), async (err, decoded) => {
+				if (typeof decoded !== 'string' && typeof decoded !== 'undefined') {
+					userEmail = decoded;
+				}
+			});
 
-		const user = await this.userModel.findOne({ email: userEmail.email });
-		return String(user._id);
+			const user = await this.userModel.findOne({ email: userEmail.email });
+			return String(user._id);
+		} catch (err) {
+			throw new HttpException('the user was not found', 404);
+		}
 	}
 }

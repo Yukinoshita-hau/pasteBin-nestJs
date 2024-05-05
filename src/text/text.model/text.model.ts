@@ -8,10 +8,17 @@ export type TextDocument = HydratedDocument<TextSchema>;
 export class TextSchema {
 	_id: ObjectId | string;
 
+	@Prop({ type: String })
+	customId: string;
+
 	@Prop({ type: MSchema.Types.ObjectId, ref: UserSchema.name })
 	user: UserSchema | string;
 
-	text?: string;
+	@Prop({ type: String, required: true })
+	title: string;
+
+	@Prop({ type: String, required: true })
+	text: string;
 
 	@Prop()
 	expire_at: Date;

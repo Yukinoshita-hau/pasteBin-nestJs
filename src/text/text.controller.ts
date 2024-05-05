@@ -45,7 +45,23 @@ export class TextController {
 	@Get(':id')
 	async getText(@Param('id') id: string, @Res() res: Response): Promise<void> {
 		const text = await this.textService.findCachedByIdText(id);
-		res.json({ text: text.text, id: text._id, user: text.user });
+		res.json(text);
+	}
+
+	@UseGuards(JwtAuthGuard)
+	@Post('updateCustomId/:id')
+	async updateCustomId(
+		@Body() { customId }: { customId: string },
+		@Param('id') id: string,
+		@Headers('Authorization') token: string,
+	) {
+		const jwt = await this.textService.getIdJwt(token);
+		const user = await this.textService.findByIdText(id);
+		if (jwt !== String(user.user)) {
+			throw new HttpException("This text doesn't belong to you", 401);
+		}
+		await this.textService.updateCustomId(id, customId);
+		return await this.textService.findByIdText(customId);
 	}
 
 	@UseGuards(JwtAuthGuard)
@@ -56,12 +72,10 @@ export class TextController {
 	): Promise<void> {
 		const jwt = await this.textService.getIdJwt(token);
 		const user = await this.textService.findByIdText(id);
-		console.log(jwt, String(user.user));
 		if (jwt !== String(user.user)) {
 			throw new HttpException("This text doesn't belong to you", 401);
 		}
-		const result = await this.textService.deleteText(token, id);
-		console.log(result.id, result);
+		await this.textService.deleteText(token, id);
 	}
 
 	@UseGuards(JwtAuthGuard)
@@ -73,7 +87,6 @@ export class TextController {
 	) {
 		const jwt = await this.textService.getIdJwt(token);
 		const user = await this.textService.findByIdText(id);
-		console.log(jwt, String(user.user));
 		if (jwt !== String(user.user)) {
 			throw new HttpException("This text doesn't belong to you", 401);
 		}
@@ -107,5 +120,6 @@ export class TextController {
 	async subtractDislike(@Param('id') id: string, @Res() res: Response) {
 		const result = await this.textService.subtractDislike(id);
 		res.json(result);
+		throw new HttpException('invalid id', 400);
 	}
 }

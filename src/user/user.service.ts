@@ -48,7 +48,7 @@ export class UserService {
 				jwtEmail = decoded.email;
 			}
 		});
-		return this.userModel
+		const result = (await this.userModel
 			.aggregate([
 				{
 					$match: {
@@ -69,6 +69,8 @@ export class UserService {
 					},
 				},
 			])
-			.exec() as unknown as (UserSchema & { texts: TextSchema[]; textCount: number })[];
+			.exec()) as unknown as (UserSchema & { texts: TextSchema[]; textCount: number })[];
+		delete result[0].password;
+		return result;
 	}
 }
