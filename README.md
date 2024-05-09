@@ -24,7 +24,7 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+this is an API that is implemented according to the concept of the pastebin website. The API can store information about a text file in MongoDB and the file itself is stored in the YandexCloudstore in the Backet. There is Redis caching on default port 6379.
 
 ## Installation
 
@@ -32,6 +32,11 @@
 $ npm install
 ```
 
+## Docker
+```bash
+# everything must be done at the root of the project, and environment variables must be located there.
+$ docker-compose up -d 
+```
 ## Running the app
 
 ```bash
@@ -43,19 +48,6 @@ $ npm run start:dev
 
 # production mode
 $ npm run start:prod
-```
-
-## Test
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
 ```
 
 ## .env
@@ -72,6 +64,12 @@ $ SALT
 
 # to create a jwt token.
 $ SECRET
+
+# to connect to yandexCloud
+$ ACCESSKEYID
+$ SECRETACCESSKEY
+$ REGION
+$ ENDPOINT
 ```
 
 ## Support
