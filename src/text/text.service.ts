@@ -26,8 +26,6 @@ export class TextService {
 			if (text.ttl) {
 				text.expire_at = new Date(Date.now() + text.ttl * 1000);
 			}
-			text.likes = 0;
-			text.dislikes = 0;
 			if (text.customId) {
 				if (text.customId.length < 4 || text.customId.length > 25) {
 					throw new HttpException(
@@ -36,6 +34,10 @@ export class TextService {
 					);
 				}
 			}
+			text.likes = 0;
+			text.dislikes = 0;
+			text.hashing = false;
+			text.views = 0;
 			const newText = new this.textModel(text);
 			await this.cloudstore.addItemIntoBucket('texts', `${String(newText._id)}.txt`, text.text);
 			newText.save();
@@ -51,7 +53,7 @@ export class TextService {
 				);
 			} else {
 				if (err instanceof Error) {
-					throw new HttpException(`${err.message}`, 503);
+					throw new HttpException(`${err.message}`, 400);
 				}
 			}
 		}
@@ -59,20 +61,40 @@ export class TextService {
 
 	async findCachedByIdText(id: string): Promise<TextDocument | null> {
 		try {
+			await this.textModel.updateOne({ _id: id }, { $inc: { views: 1 } });
 			const redis = await redisConfig();
 			const text = await redis.get(id);
 			if (text) {
 				return JSON.parse(text) as TextDocument;
 			} else {
 				const result = await this.findByIdText(id);
-				if (result) {
+				if (result && result.hashing) {
 					const userStr = String(result.user);
 					result.user = userStr;
 					await redis.setEx(id, 20, JSON.stringify(result));
 					return result;
 				}
-				return null;
+				return result;
 			}
+		} catch (err) {
+			throw new HttpException(`this text was not found`, 404);
+		}
+	}
+
+	async findByIdText(id: string): Promise<TextDocument | null> {
+		try {
+			let result;
+			if (await this.textModel.findOne({ customId: id })) {
+				result = await this.textModel.findOne({ customId: id });
+			} else {
+				result = await this.textModel.findById(id);
+			}
+			const text = await this.cloudstore.readBucketItem('texts', `${result._id}.txt`);
+			result.text = text;
+			if (result.views > 500) {
+				result.hashing = true;
+			}
+			return result;
 		} catch (err) {
 			throw new HttpException(`this text was not found`, 404);
 		}
@@ -105,22 +127,6 @@ export class TextService {
 					throw new HttpException(`this text was not found`, 404);
 				}
 			}
-		}
-	}
-
-	async findByIdText(id: string): Promise<TextDocument | null> {
-		try {
-			let result;
-			if (await this.textModel.findOne({ customId: id })) {
-				result = await this.textModel.findOne({ customId: id });
-			} else {
-				result = await this.textModel.findById(id);
-			}
-			const text = await this.cloudstore.readBucketItem('texts', `${result._id}.txt`);
-			result.text = text;
-			return result;
-		} catch (err) {
-			throw new HttpException(`this text was not found`, 404);
 		}
 	}
 

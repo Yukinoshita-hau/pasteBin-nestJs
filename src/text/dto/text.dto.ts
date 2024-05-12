@@ -17,4 +17,7 @@ export class TextDto {
 
 	likes: number;
 	dislikes: number;
+
+	views: number;
+	hashing: boolean;
 }

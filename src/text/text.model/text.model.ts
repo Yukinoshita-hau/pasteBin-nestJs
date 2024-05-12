@@ -31,6 +31,12 @@ export class TextSchema {
 
 	@Prop({ required: true })
 	dislikes: number;
+
+	@Prop()
+	hashing: boolean;
+
+	@Prop()
+	views: number;
 }
 
 export const textSchema = SchemaFactory.createForClass(TextSchema);
